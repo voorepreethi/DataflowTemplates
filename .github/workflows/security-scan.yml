@@ -14,11 +14,34 @@ permissions:
   contents: read
 
 jobs:
+  trivy-fork-pr:
+    name: Trivy security scan (fork PR)
+    # Fork PRs are untrusted: run scan with read-only permissions and no secrets.
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: fs
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          format: 'table'
+          exit-code: '1'
+        env:
+          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db
+          TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db
+
   trivy:
-    name: Trivy security scan
+    name: Trivy security scan (trusted contexts)
     # Skip on pull_request_target — that event runs with full secrets and must
     # never check out / execute PR-supplied code. See dependabot-notify below.
-    # Also skip on fork-based pull_request events.
+    # This trusted job handles non-fork pull_request, schedule, and manual runs.
     if: github.event_name != 'pull_request_target' && (github.event_name != 'pull_request' || !github.event.pull_request.head.repo.fork)
     runs-on: ubuntu-latest
     permissions:
@@ -56,7 +79,7 @@ jobs:
         with:
           payload: |
             {
-              "text": ":rotating_light: Trivy detected HIGH/CRITICAL CVEs on master in ${{ github.repository }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\nFindings: ${{ github.server_url }}/${{ github.repository }}/security/code-scanning?query=is%3Aopen+tool%3ATrivy"
+              "text": ":rotating_light: Trivy detected HIGH/CRITICAL CVEs on ${{ github.ref_name }} in ${{ github.repository }}\nRun: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\nFindings: ${{ github.server_url }}/${{ github.repository }}/security/code-scanning?query=is%3Aopen+tool%3ATrivy"
             }
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_TRIVY_WEBHOOK_URL }}
