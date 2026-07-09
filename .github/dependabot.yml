@@ -1,0 +1,61 @@
+# Dependabot version updates. Security (CVE) updates are enabled separately in
+# repo Settings > Code security and do not require an entry here.
+version: 2
+updates:
+  # Java — root pom plus the nested v2 reactor (module dirs enumerated so every
+  # child pom is scanned; grouping keeps it to one PR per run).
+  - package-ecosystem: maven
+    directories:
+      - "/"
+      - "/v2"
+      - "/v2/*"
+      - "/v2/cdc-parent/*"
+    schedule:
+      interval: cron
+      cronjob: "0 11 * * 1"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      maven-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions — keeps the SHA-pinned actions in workflows current.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: cron
+      cronjob: "0 11 * * 1"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: "build"
+      include: "scope"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+  # Docker
+  - package-ecosystem: docker
+    directory: "/v2/flex-wordcount-python"
+    schedule:
+      interval: cron
+      cronjob: "0 11 * * 1"
+      timezone: "Asia/Kolkata"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: "build"
+      include: "scope"
