@@ -6,7 +6,7 @@ on:
   pull_request_target:
     types: [opened, reopened]
   schedule:
-    # Every day at 6:00 AM UTC
+    # Every day at 11:30 AM IST (6:00 AM UTC)
     - cron: "0 6 * * *"
   workflow_dispatch:
 
