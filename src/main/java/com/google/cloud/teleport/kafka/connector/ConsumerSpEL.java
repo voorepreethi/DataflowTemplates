@@ -28,11 +28,6 @@ import org.apache.kafka.common.TopicPartition;
 import org.joda.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.expression.Expression;
-import org.springframework.expression.ExpressionParser;
-import org.springframework.expression.spel.SpelParserConfiguration;
-import org.springframework.expression.spel.standard.SpelExpressionParser;
-import org.springframework.expression.spel.support.StandardEvaluationContext;
 
 /**
  * ConsumerSpEL to handle multiple of versions of Consumer API between Kafka 0.9 and 0.10. It auto
@@ -41,13 +36,6 @@ import org.springframework.expression.spel.support.StandardEvaluationContext;
 class ConsumerSpEL {
 
   private static final Logger LOG = LoggerFactory.getLogger(ConsumerSpEL.class);
-
-  private SpelParserConfiguration config = new SpelParserConfiguration(true, true);
-  private ExpressionParser parser = new SpelExpressionParser(config);
-
-  private Expression seek2endExpression = parser.parseExpression("#consumer.seekToEnd(#tp)");
-
-  private Expression assignExpression = parser.parseExpression("#consumer.assign(#tp)");
 
   private boolean hasRecordTimestamp = false;
   private boolean hasOffsetsForTimes = false;
@@ -90,17 +78,11 @@ class ConsumerSpEL {
   }
 
   public void evaluateSeek2End(Consumer consumer, TopicPartition topicPartition) {
-    StandardEvaluationContext mapContext = new StandardEvaluationContext();
-    mapContext.setVariable("consumer", consumer);
-    mapContext.setVariable("tp", topicPartition);
-    seek2endExpression.getValue(mapContext);
+    consumer.seekToEnd(ImmutableMap.of(topicPartition, 0L).keySet());
   }
 
   public void evaluateAssign(Consumer consumer, Collection<TopicPartition> topicPartitions) {
-    StandardEvaluationContext mapContext = new StandardEvaluationContext();
-    mapContext.setVariable("consumer", consumer);
-    mapContext.setVariable("tp", topicPartitions);
-    assignExpression.getValue(mapContext);
+    consumer.assign(topicPartitions);
   }
 
   public long getRecordTimestamp(ConsumerRecord<byte[], byte[]> rawRecord) {
