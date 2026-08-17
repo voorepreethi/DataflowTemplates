@@ -30,7 +30,7 @@
         <avro.version>1.8.2</avro.version>
         <bigquery.version>1.128.0</bigquery.version>
         <commons.version>1.8</commons.version>
-        <commons-text.version>1.9</commons-text.version>
+        <commons-text.version>1.10.0</commons-text.version>
         <protoc.version>3.15.8</protoc.version>
         <truth.version>1.0.1</truth.version>
         <truth-proto-extension.version>1.0.1</truth-proto-extension.version>
