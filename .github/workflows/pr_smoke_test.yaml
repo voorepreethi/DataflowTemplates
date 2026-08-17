@@ -11,8 +11,8 @@ concurrency:
 env:
   PROJECT_ID: logging-integrations
   REGION: us-east1
-  BUCKET: gs://nr-pubsub-smoke-pvoore
-  SUBNETWORK: https://www.googleapis.com/compute/v1/projects/logging-integrations/regions/us-east1/subnetworks/preethi
+  BUCKET: gs://nr-dataflow-smoke-test
+  SUBNETWORK: https://www.googleapis.com/compute/v1/projects/logging-integrations/regions/us-east1/subnetworks/dataflow-smoke-test
 
 permissions:
   contents: read
