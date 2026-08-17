@@ -1,0 +1,106 @@
+name: PR smoke test
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+concurrency:
+  group: smoke-test-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  PROJECT_ID: logging-integrations
+  REGION: us-east1
+  BUCKET: gs://nr-pubsub-smoke-pvoore
+  SUBNETWORK: https://www.googleapis.com/compute/v1/projects/logging-integrations/regions/us-east1/subnetworks/preethi
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-test:
+    name: Smoke test PubsubToNewRelic against logging-integrations
+    # Only run once a reviewer approves, and never for fork PRs (this job
+    # needs GCP + New Relic credentials that must not be exposed to
+    # untrusted, fork-supplied code).
+    if: github.event.review.state == 'approved' && github.event.pull_request.head.repo.fork == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up JDK 8
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4
+        with:
+          distribution: temurin
+          java-version: '8'
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_SMOKETEST_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SMOKETEST_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@6a7c903a70c8625ed6700fa299f5ddb4ca6822da # v2
+
+      - name: Run smoke test
+        id: smoke
+        env:
+          NR_LICENSE_KEY: ${{ secrets.NR_SMOKETEST_LICENSE_KEY }}
+          DISABLE_PUBLIC_IPS: "true"
+        run: |
+          set -euo pipefail
+          output_file="$(mktemp)"
+          ./scripts/gcp_pubsub_to_newrelic_smoke_test.sh | tee "$output_file"
+
+          {
+            echo "topic=$(grep '^Topic:' "$output_file" | awk '{print $2}')"
+            echo "subscription=$(grep '^Subscription:' "$output_file" | awk '{print $2}')"
+            echo "job_name=$(grep '^Job name:' "$output_file" | awk '{print $3}')"
+            echo "token=$(grep '^Verification token:' "$output_file" | awk '{print $3}')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify log reached New Relic
+        if: always() && steps.smoke.outputs.token != ''
+        env:
+          NR_QUERY_API_KEY: ${{ secrets.NR_QUERY_API_KEY }}
+          NR_ACCOUNT_ID: ${{ secrets.NR_ACCOUNT_ID }}
+          TOKEN: ${{ steps.smoke.outputs.token }}
+        run: |
+          set -euo pipefail
+          nrql="SELECT count(*) FROM Log WHERE message LIKE '%${TOKEN}%' SINCE 10 MINUTES AGO"
+          query="{ actor { account(id: ${NR_ACCOUNT_ID}) { nrql(query: \"$(printf '%s' "$nrql" | sed 's/"/\\\\"/g')\") { results } } } }"
+          payload=$(jq -n --arg q "$query" '{query: $q}')
+
+          for i in $(seq 1 20); do
+            result=$(curl -s -X POST https://api.newrelic.com/graphql \
+              -H "Content-Type: application/json" \
+              -H "Api-Key: ${NR_QUERY_API_KEY}" \
+              -d "$payload")
+            count=$(echo "$result" | jq -r '.data.actor.account.nrql.results[0].count // 0')
+            if [ "$count" -gt 0 ]; then
+              echo "Log verified in New Relic (count=$count) for token: ${TOKEN}"
+              exit 0
+            fi
+            echo "Not found yet (attempt $i/20), retrying in 15s..."
+            sleep 15
+          done
+
+          echo "::error::Log with token ${TOKEN} did not reach New Relic within timeout"
+          exit 1
+
+      - name: Cleanup GCP resources
+        if: always() && steps.smoke.outputs.job_name != ''
+        env:
+          NR_LICENSE_KEY: ${{ secrets.NR_SMOKETEST_LICENSE_KEY }}
+          TOPIC_NAME: ${{ steps.smoke.outputs.topic }}
+          SUB_NAME: ${{ steps.smoke.outputs.subscription }}
+          JOB_NAME: ${{ steps.smoke.outputs.job_name }}
+        run: ./scripts/gcp_pubsub_to_newrelic_smoke_test.sh --cleanup
